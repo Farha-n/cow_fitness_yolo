@@ -206,7 +206,7 @@ If using this work, cite:
 
 @misc{cowfitness2025,
   title={Efficient Livestock Detection Using YOLO Models},
-  author={Shahdeo, Omkar and Dinkar, Aman and Kumar, Ankit and Wani, Abdul Basit and Farooq, Farhan},
+  author={Omkar Shahdeo and  Aman Dinkar and  Ankit Kumar and  Abdul Basit Wani and  Farhan Farooq},
   year={2025},
   institution={Lovely Professional University},
   note={Dataset sourced from Kaggle},
