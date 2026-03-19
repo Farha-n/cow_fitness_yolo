@@ -6,6 +6,10 @@ numpy
 pandas
 pyyaml
 tqdm
+fastapi
+uvicorn
+python-multipart
+pillow
 
 ultralytics==8.3.40
 torch>=2.2.0
