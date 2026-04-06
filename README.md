@@ -1,213 +1,297 @@
-# 🐄 Cow Fitness: YOLO-Based Cattle Detection System  
-### End-to-End Pipeline for Cattle Detection, Model Training, Evaluation & Deployment  
-**Authors:** Omkar Shahdeo, Aman Dinkar, Ankit Kumar, Abdul Basit Wani, Farhan Farooq  
-**Institution:** Department of Computer Science & Engineering, Lovely Professional University  
+# Cow Fitness YOLO Project
 
----
+An end-to-end computer vision project for livestock analysis, combining:
 
-## 📌 Overview  
-This repository contains the complete implementation of a research-grade cattle detection system using YOLO-based object detection models.  
-It accompanies our research work on:
+- A FastAPI backend for detection and classification
+- A React Native (Expo) mobile frontend for capture and visualization
+- YOLO-based models for detection and fitness assessment
 
-> **“Efficient Livestock Detection Using YOLO Models:  
-> A Comprehensive Evaluation on a Cleaned Cattle Dataset.”**
+This repository is organized for clear separation of concerns:
 
-The project includes:
+- backend: APIs, inference, training scripts, datasets
+- frontend: mobile application
+- models: base and trained model artifacts
 
-- A fully cleaned, verified dataset  
-- Train/Val/Test split (80/10/10)  
-- Experiments with multiple YOLO architectures  
-- Ablation studies (augmentation, resolution, models)  
-- Exported models for deployment (TorchScript + ONNX)  
-- Paper figures (PR curves, loss graphs, sample detections)  
-- Reproducible training pipeline  
+## 1) What This Project Does
 
----
+Given one or more cattle images, the system can:
 
-# 📂 Repository Structure  
+- Detect animals and return bounding boxes
+- Estimate fitness condition (good, average, bad)
+- Predict species (cow, buffalo, other, unknown)
+- Predict breed (when species is cow and breed model is available)
+- Return batch summary statistics for multiple images
 
-cow_yolo_repo/
-│
-├── data/
-│ ├── train/images
-│ ├── train/labels
-│ ├── val/images
-│ ├── val/labels
-│ ├── test/images
-│ └── test/labels
-│
+## 2) Repository Structure
+
+```text
+cow_fitness_yolo/
+├── backend/
+│   ├── src/
+│   │   ├── api.py
+│   │   ├── infer.py
+│   │   ├── infer_fitness_classifier.py
+│   │   ├── train.py
+│   │   ├── train_fitness_classifier.py
+│   │   ├── train_species_classifier.py
+│   │   ├── train_breed_classifier.py
+│   │   └── bootstrap_fitness_dataset.py
+│   ├── data/
+│   ├── data_fitness/
+│   ├── data_species/
+│   ├── data_breed/
+│   ├── requirements.txt
+│   └── README.md
+├── frontend/
+│   ├── cowFitnessApp/
+│   │   ├── App.js
+│   │   ├── package.json
+│   │   └── src/screens/
+│   │       ├── HomeScreen.js
+│   │       ├── CaptureScreen.js
+│   │       ├── ResultsScreen.js
+│   │       └── HistoryScreen.js
+│   └── MOBILE_APP_SETUP.md
 ├── models/
-│ ├── cow_yolos_best.pt ← YOLO-S best model
-│ └── cow_yolom_best.pt ← YOLO-M best model
-│
-├── paper_figures/
-│ ├── dataset_samples.jpg
-│ ├── class_distribution.png
-│ ├── training_curve_box_loss.png
-│ ├── training_curve_map50.png
-│ ├── pr_curve.png
-│ └── model_comparison_table.png
-│
-├── src/
-│ ├── train.py
-│ ├── evaluate.py
-│ ├── infer.py
-│ ├── utils.py
-│ └── export.py
-│
-├── data.yaml
-├── requirements.txt
+│   ├── trained/
+│   │   ├── cow_yolos_best.pt
+│   │   └── cow_fitness_cls.pt
+│   ├── yolo11n.pt
+│   ├── yolo11n-cls.pt
+│   ├── yolov8s.pt
+│   └── yolov8m.pt
+├── .venv/
+├── .gitignore
+├── LICENSE
 └── README.md
+```
 
----
+## 3) System Architecture
 
-# 🧭 Dataset
+```mermaid
+flowchart LR
+    A[Mobile App - Expo React Native] -->|POST /predict| B[FastAPI Backend]
+    A -->|POST /predict-batch| B
 
-### Source  
-The dataset is sourced from Kaggle:  
-**“Cows 2023 — Annotated Livestock Dataset”**  
-(Include citation in your paper)
+    B --> C[YOLO Detector
+    cow_yolos_best.pt]
+    B --> D[Fitness Classifier
+    cow_fitness_cls.pt]
+    B --> E[Species Classifier
+    optional]
+    B --> F[Breed Classifier
+    optional]
 
-### Cleaning Steps  
-✓ Removed corrupted images  
-✓ Verified bounding box format  
-✓ Ensured YOLO annotation validity  
-✓ Removed extra classes (single class = cow)  
+    C --> G[Detections
+    bbox + confidence]
+    D --> H[Fitness Assessment]
+    E --> I[Species Result]
+    F --> J[Breed Result]
 
-### Dataset Sample  
-*(placeholder – replace after pushing to repo)*  
-![Dataset Samples](paper_figures/dataset_samples.jpg)
+    G --> K[Unified JSON Response]
+    H --> K
+    I --> K
+    J --> K
 
-### Class Distribution  
-![Class Distribution](paper_figures/class_distribution.png)
+    K --> A
+```
 
----
+## 4) Frontend Overview
 
-# 🧠 Models Trained
+Location: frontend/cowFitnessApp
 
-We trained **three YOLO variants** for comparison:
+Main app responsibilities:
 
-| Model | Resolution | Precision | Recall | mAP50 | mAP50–95 | Fitness |
-|-------|-----------|-----------|--------|--------|-----------|----------|
-| **YOLO-S** | **640px** | 0.937 | 0.925 | 0.973 | **0.786** | **0.805** |
-| **YOLO-S** | **512px** | 0.941 | 0.925 | 0.970 | 0.783 | 0.803 |
-| **YOLO-M** | **640px** | 0.868 | 0.832 | 0.905 | 0.690 | 0.712 |
+- Select image from gallery
+- Capture image from camera
+- Select multiple images for batch processing
+- Call backend API endpoints
+- Overlay detection boxes on image preview
+- Show species, breed, and fitness summaries
+- Keep local in-memory history of detections
 
-📌 **YOLO-S (640px)** is the recommended final model.
+Core screen flow:
 
----
+- HomeScreen: entry and navigation
+- CaptureScreen: backend URL + image input actions
+- ResultsScreen: bounding boxes, confidence, summaries
+- HistoryScreen: previously processed items
 
-# 🧪 Ablation Studies
+Backend URL behavior in app:
 
-## 1️⃣ Resolution Ablation  
-Results show **640px > 512px > 416px** in overall accuracy, but 512px gives **faster inference**.
+- Defaults to current Expo host with port 8010
+- Can be edited in Capture screen
 
-## 2️⃣ Model Size Ablation  
-- YOLO-N too weak  
-- YOLO-S best accuracy/speed trade-off  
-- YOLO-M heavier with marginal gains  
+## 5) Backend Overview
 
-## 3️⃣ Augmentation Ablation  
-Turning off augmentation dropped accuracy by **30–40%**, confirming augmentation was necessary.
+Location: backend/src
 
----
+API server:
 
-# 📊 Training Curves
+- Framework: FastAPI
+- Model runtime: Ultralytics YOLO
+- Endpoints:
+  - GET /health
+  - GET /model-status
+  - POST /predict
+  - POST /predict-batch
 
-(Replace after uploading images)
+Inference pipeline:
 
-### 🔹 Box Loss Curve  
-![Box Loss](paper_figures/training_curve_box_loss.png)
+1. Load detector model (required)
+2. Run object detection and extract boxes
+3. Run optional fitness classifier
+4. Run optional species classifier with detector fallback
+5. Run optional breed classifier if species is cow
+6. Return consolidated response JSON
 
-### 🔹 mAP Curve  
-![mAP Curve](paper_figures/training_curve_map50.png)
+Model loading logic in backend:
 
-### 🔹 Precision–Recall Curve  
-![PR Curve](paper_figures/pr_curve.png)
+- Uses environment variables when provided
+- Otherwise resolves to models/trained first
+- Falls back to models root legacy paths
 
----
+## 6) Models
 
-# 🚀 Inference
+Location: models
 
-## Using Python
-```python
-from ultralytics import YOLO
+Currently available in this repository:
 
-model = YOLO("models/cow_yolos_best.pt")
-result = model("sample.jpg", save=True)
-Output will be saved in runs/detect/predict/.
+- Detection model:
+  - models/trained/cow_yolos_best.pt
+- Fitness classifier:
+  - models/trained/cow_fitness_cls.pt
+- Base models (for additional training/experiments):
+  - models/yolo11n.pt
+  - models/yolo11n-cls.pt
+  - models/yolov8s.pt
+  - models/yolov8m.pt
 
-🏋️ Training (Reproducible)
-pip install -r requirements.txt
-python src/train.py
+Optional models (if you add them):
 
-Train script (src/train.py)
+- models/trained/cattle_species_cls.pt
+- models/trained/cow_breed_cls.pt
 
-Loads YOLO-S (or YOLO-M)
+## 7) Quick Start
 
-Uses your dataset split
+### Prerequisites
 
-Logs metrics
+- Python 3.10+
+- Node.js 18+
+- npm
+- Expo CLI runtime via npm scripts
 
-Saves PR curves + loss plots
+### 7.1 Start Backend
 
-Produces ONNX + TorchScript
+From repository root:
 
-📏 Evaluation
+```bash
+F:/Cow/cow_fitness_yolo/.venv/Scripts/python.exe -m uvicorn backend.src.api:app --host 0.0.0.0 --port 8010 --reload
+```
 
-Run:
+Health check:
 
-python src/evaluate.py
+```bash
+curl http://localhost:8010/health
+```
 
+### 7.2 Start Frontend
 
-Produces:
+From repository root:
 
-Precision / Recall / mAP
+```bash
+cd frontend/cowFitnessApp
+npm install
+npm start
+```
 
-Confusion matrices
+If your backend runs on a different host/port, update the Backend URL in Capture screen.
 
-PR curves
+## 8) API Response Shape
 
-JSON metrics (for paper)
+Predict endpoint returns data in this form:
 
-📦 Model Export
-python src/export.py
-
-
-Exports to:
-
-model.onnx
-
-model.torchscript
-
-model_int8.onnx (for deployment)
-
-🌐 Deployment Options
-
-The export formats allow deployment on:
-
-Flask / FastAPI REST API
-
-NVIDIA Triton Server
-
-Mobile apps (TFLite conversion)
-
-Web apps (ONNX.js)
-
-Jetson Nano / Xavier
-
-📄 License
-
-This project uses the MIT License, allowing academic + commercial usage.
-
-🧑‍🏫 Citation
-
-If using this work, cite:
-
-@misc{cowfitness2025,
-  title={Efficient Livestock Detection Using YOLO Models},
-  author={Omkar Shahdeo and  Aman Dinkar and  Ankit Kumar and  Abdul Basit Wani and  Farhan Farooq},
-  year={2025},
-  institution={Lovely Professional University},
-  note={Dataset sourced from Kaggle},
+```json
+{
+  "detections": [
+    {
+      "class_id": 0,
+      "class_name": "cow",
+      "confidence": 0.93,
+      "bbox": {
+        "x1": 12.3,
+        "y1": 18.1,
+        "x2": 256.2,
+        "y2": 301.6
+      }
+    }
+  ],
+  "assessment": {
+    "status": "good",
+    "score": 86,
+    "summary": "Classifier indicates good fitness condition.",
+    "note": "Model-based estimate only; veterinary validation is recommended.",
+    "source": "classifier",
+    "confidence": 0.91
+  },
+  "species": {
+    "label": "cow",
+    "confidence": 0.88,
+    "source": "classifier"
+  },
+  "breed": {
+    "label": "unknown",
+    "confidence": 0.0,
+    "source": "unavailable"
+  }
 }
+```
+
+## 9) Training and Data
+
+Training scripts live in backend/src:
+
+- train.py: detector training
+- train_fitness_classifier.py: good/average/bad classifier
+- train_species_classifier.py: species classifier
+- train_breed_classifier.py: breed classifier
+
+Dataset roots in this repository:
+
+- backend/data
+- backend/data_fitness
+- backend/data_species
+- backend/data_breed
+
+Example (fitness classifier):
+
+```bash
+F:/Cow/cow_fitness_yolo/.venv/Scripts/python.exe backend/src/train_fitness_classifier.py --data backend/data_fitness --epochs 50 --imgsz 224 --batch 16
+```
+
+## 10) Environment Variables for Model Overrides
+
+You can override model paths at runtime:
+
+- DETECTOR_MODEL_PATH
+- FITNESS_MODEL_PATH
+- SPECIES_MODEL_PATH
+- BREED_MODEL_PATH
+
+Example:
+
+```bash
+set DETECTOR_MODEL_PATH=F:/path/to/custom_detector.pt
+set FITNESS_MODEL_PATH=F:/path/to/custom_fitness.pt
+F:/Cow/cow_fitness_yolo/.venv/Scripts/python.exe -m uvicorn backend.src.api:app --host 0.0.0.0 --port 8010 --reload
+```
+
+## 11) Notes
+
+- Fitness outputs are model-based estimates and not veterinary diagnosis.
+- Species and breed depend on optional classifier availability.
+- For mobile testing on a physical device, use your machine LAN IP in app backend URL.
+
+## 12) License
+
+This project is licensed under the MIT License. See LICENSE for details.

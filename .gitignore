@@ -1,9 +1,9 @@
 .venv/
 **/__pycache__/
 *.pyc
-cowFitnessApp/node_modules/
-cowFitnessApp/.expo/
-cowFitnessApp/.expo-shared/
+frontend/cowFitnessApp/node_modules/
+frontend/cowFitnessApp/.expo/
+frontend/cowFitnessApp/.expo-shared/
 *.log
 Thumbs.db
 .DS_Store
