@@ -4,9 +4,10 @@ export default function ResultsScreen({
   imageUri,
   imageSize,
   detections,
+  detectionThreshold,
+  onChangeDetectionThreshold,
   assessment,
-  species,
-  breed,
+  animalType,
   batchSummary,
   loading,
   onDetect,
@@ -18,15 +19,35 @@ export default function ResultsScreen({
   const previewHeight = imageSize.width > 0 ? (previewWidth * imageSize.height) / imageSize.width : 220;
   const scaleX = previewWidth / Math.max(1, imageSize.width);
   const scaleY = previewHeight / Math.max(1, imageSize.height);
+  const thresholdPercent = Math.round((detectionThreshold || 0) * 100);
+  const visibleDetections = (detections || []).filter((item) => (item?.confidence || 0) >= (detectionThreshold || 0));
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Results</Text>
 
+      <View style={styles.thresholdRow}>
+        <Text style={styles.thresholdLabel}>Confidence Filter: {thresholdPercent}%</Text>
+        <View style={styles.thresholdButtons}>
+          <Pressable
+            style={styles.thresholdButton}
+            onPress={() => onChangeDetectionThreshold(Math.max(0.1, +(detectionThreshold - 0.05).toFixed(2)))}
+          >
+            <Text style={styles.thresholdButtonText}>-</Text>
+          </Pressable>
+          <Pressable
+            style={styles.thresholdButton}
+            onPress={() => onChangeDetectionThreshold(Math.min(0.95, +(detectionThreshold + 0.05).toFixed(2)))}
+          >
+            <Text style={styles.thresholdButtonText}>+</Text>
+          </Pressable>
+        </View>
+      </View>
+
       {imageUri ? (
         <View style={[styles.previewWrap, { width: previewWidth, height: previewHeight }]}>
           <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
-          {detections.map((item, index) => {
+          {visibleDetections.map((item, index) => {
             const box = item?.bbox;
             if (!box) return null;
 
@@ -50,16 +71,15 @@ export default function ResultsScreen({
         </View>
       )}
 
-      <Text style={styles.countText}>Detections: {detections.length}</Text>
+      <Text style={styles.countText}>
+        Showing {visibleDetections.length}/{(detections || []).length} detections after threshold.
+      </Text>
 
-      {species || breed ? (
+      {animalType ? (
         <View style={styles.assessmentCard}>
-          <Text style={styles.assessmentTitle}>Species & Breed</Text>
+          <Text style={styles.assessmentTitle}>Animal Type</Text>
           <Text style={styles.assessmentText}>
-            Species: {String(species?.label || 'unknown').toUpperCase()} ({((species?.confidence || 0) * 100).toFixed(1)}%)
-          </Text>
-          <Text style={styles.assessmentText}>
-            Breed: {String(breed?.label || 'unknown').toUpperCase()} ({((breed?.confidence || 0) * 100).toFixed(1)}%)
+            Type: {String(animalType?.label || 'unknown').toUpperCase()} ({((animalType?.confidence || 0) * 100).toFixed(1)}%)
           </Text>
         </View>
       ) : null}
@@ -68,7 +88,7 @@ export default function ResultsScreen({
         <View style={styles.assessmentCard}>
           <Text style={styles.assessmentTitle}>Batch Summary</Text>
           <Text style={styles.assessmentText}>Processed photos: {batchSummary.total || 0}</Text>
-          {Object.entries(batchSummary.speciesCounts || {}).map(([label, count]) => (
+          {Object.entries(batchSummary.animalTypeCounts || {}).map(([label, count]) => (
             <Text key={label} style={styles.assessmentText}>
               {String(label).toUpperCase()}: {count}
             </Text>
@@ -123,6 +143,36 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '700',
     marginBottom: 12,
+  },
+  thresholdRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  thresholdLabel: {
+    fontSize: 13,
+    color: '#394b59',
+    fontWeight: '600',
+  },
+  thresholdButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  thresholdButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#b6c3cc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  thresholdButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   previewWrap: {
     position: 'relative',
@@ -203,6 +253,18 @@ const styles = StyleSheet.create({
   assessmentText: {
     fontSize: 13,
     marginBottom: 2,
+  },
+  scoreBarTrack: {
+    width: '100%',
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#e3ebf0',
+    marginVertical: 8,
+    overflow: 'hidden',
+  },
+  scoreBarFill: {
+    height: '100%',
+    backgroundColor: '#0f5a8c',
   },
   assessmentNote: {
     fontSize: 12,

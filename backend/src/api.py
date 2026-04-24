@@ -40,12 +40,8 @@ SPECIES_MODEL_PATH = resolve_model_path(
     MODELS_DIR / "trained" / "cattle_species_cls.pt",
     MODELS_DIR / "cattle_species_cls.pt",
 )
-BREED_MODEL_PATH = resolve_model_path(
-    "BREED_MODEL_PATH",
-    MODELS_DIR / "trained" / "cow_breed_cls.pt",
-    MODELS_DIR / "cow_breed_cls.pt",
-)
-app = FastAPI(title="Cow Fitness YOLO API")
+DETECTOR_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTOR_CONFIDENCE_THRESHOLD", "0.55"))
+app = FastAPI(title="Animal Type and Fitness API")
 
 if not MODEL_PATH.exists():
     raise RuntimeError(f"Detector model not found at: {MODEL_PATH}")
@@ -62,18 +58,12 @@ species_model_path = SPECIES_MODEL_PATH
 if species_model_path.exists():
     species_model = YOLO(str(species_model_path))
 
-breed_model = None
-breed_model_path = BREED_MODEL_PATH
-if breed_model_path.exists():
-    breed_model = YOLO(str(breed_model_path))
-
-
 def build_assessment(detections: list, image_width: int, image_height: int) -> dict:
     if not detections:
         return {
             "status": "bad",
             "score": 20,
-            "summary": "No cow detected clearly in the image.",
+            "summary": "No cattle or buffalo detected clearly in the image.",
             "note": "Image-based estimate only; this is not a veterinary diagnosis.",
         }
 
@@ -110,7 +100,7 @@ def build_assessment(detections: list, image_width: int, image_height: int) -> d
 
     if score >= 75:
         status = "good"
-        summary = "Cow visibility and detection confidence are strong."
+        summary = "Animal visibility and detection confidence are strong."
     elif score >= 45:
         status = "average"
         summary = "Detection quality is moderate; use a clearer side-view image."
@@ -216,19 +206,6 @@ def build_species_result(image: Image.Image, detections: list[dict]) -> dict:
     }
     classified = classify_top_label(species_model, image, aliases)
     if classified is None:
-        detection_labels = [str(item.get("class_name", "")).lower() for item in detections]
-        if any("buffalo" in label or "buff" in label for label in detection_labels):
-            return {
-                "label": "buffalo",
-                "confidence": 0.5,
-                "source": "detector_fallback",
-            }
-        if any("cow" in label or "cattle" in label for label in detection_labels):
-            return {
-                "label": "cow",
-                "confidence": 0.5,
-                "source": "detector_fallback",
-            }
         return {
             "label": "unknown",
             "confidence": 0.0,
@@ -242,44 +219,45 @@ def build_species_result(image: Image.Image, detections: list[dict]) -> dict:
     }
 
 
-def build_breed_result(image: Image.Image, species_label: str) -> dict:
-    if species_label == "unknown":
+def force_unknown_species(result: dict | None) -> dict:
+    label = str((result or {}).get("label", "unknown")).lower()
+    if label != "cow":
         return {
             "label": "unknown",
-            "confidence": 0.0,
-            "source": "unavailable",
-        }
-
-    if species_label != "cow":
-        return {
-            "label": "not_applicable",
             "confidence": 0.0,
             "source": "species_filter",
         }
+    return result or {
+        "label": "unknown",
+        "confidence": 0.0,
+        "source": "species_filter",
+    }
 
-    classified = classify_top_label(breed_model, image)
-    if classified is None:
-        return {
-            "label": "unknown",
-            "confidence": 0.0,
-            "source": "unavailable",
-        }
 
+def build_non_cow_assessment() -> dict:
     return {
-        "label": classified["label"],
-        "confidence": classified["confidence"],
-        "source": "classifier",
+        "status": "unknown",
+        "score": 0,
+        "summary": "Fitness model skipped because detected species is not cow.",
+        "note": "Cow-only fitness inference is enabled.",
+        "source": "species_filter",
     }
 
 
 def process_image(image: Image.Image) -> dict:
     image_width, image_height = image.size
 
-    results = model(image, imgsz=640)
+    results = model(image, imgsz=640, conf=DETECTOR_CONFIDENCE_THRESHOLD)
     if not results:
         detections = []
-        species = build_species_result(image, detections)
-        breed = build_breed_result(image, species.get("label", "unknown"))
+        animal_type = force_unknown_species(build_species_result(image, detections))
+        if animal_type.get("label") != "cow":
+            return {
+                "detections": detections,
+                "assessment": build_non_cow_assessment(),
+                "animal_type": animal_type,
+                "species": animal_type,
+            }
         classifier_assessment = build_classifier_assessment(image)
         if classifier_assessment is None:
             classifier_assessment = build_assessment([], image_width, image_height)
@@ -287,8 +265,8 @@ def process_image(image: Image.Image) -> dict:
         return {
             "detections": detections,
             "assessment": classifier_assessment,
-            "species": species,
-            "breed": breed,
+            "animal_type": animal_type,
+            "species": animal_type,
         }
 
     boxes = results[0].boxes
@@ -303,10 +281,13 @@ def process_image(image: Image.Image) -> dict:
         for index, coords in enumerate(xyxy):
             class_id = int(cls_ids[index]) if index < len(cls_ids) else -1
             confidence = float(conf[index]) if index < len(conf) else 0.0
+            class_name = names.get(class_id, str(class_id))
+            if species_model is None and str(class_name).strip().lower() in {"cow", "cattle", "buffalo"}:
+                class_name = "animal"
             detections.append(
                 {
                     "class_id": class_id,
-                    "class_name": names.get(class_id, str(class_id)),
+                    "class_name": class_name,
                     "confidence": confidence,
                     "bbox": {
                         "x1": float(coords[0]),
@@ -317,8 +298,14 @@ def process_image(image: Image.Image) -> dict:
                 }
             )
 
-    species = build_species_result(image, detections)
-    breed = build_breed_result(image, species.get("label", "unknown"))
+    animal_type = force_unknown_species(build_species_result(image, detections))
+    if animal_type.get("label") != "cow":
+        return {
+            "detections": detections,
+            "assessment": build_non_cow_assessment(),
+            "animal_type": animal_type,
+            "species": animal_type,
+        }
 
     classifier_assessment = build_classifier_assessment(image)
     if classifier_assessment is None:
@@ -328,8 +315,8 @@ def process_image(image: Image.Image) -> dict:
     return {
         "detections": detections,
         "assessment": classifier_assessment,
-        "species": species,
-        "breed": breed,
+        "animal_type": animal_type,
+        "species": animal_type,
     }
 
 
@@ -355,16 +342,13 @@ def health() -> dict:
 @app.get("/model-status")
 def model_status() -> dict:
     return {
-        "detector_model": MODEL_PATH,
+        "detector_model": str(MODEL_PATH),
         "fitness_model_path": str(fitness_model_path),
         "fitness_model_exists": fitness_model_path.exists(),
         "fitness_model_loaded": fitness_model is not None,
-        "species_model_path": str(species_model_path),
-        "species_model_exists": species_model_path.exists(),
-        "species_model_loaded": species_model is not None,
-        "breed_model_path": str(breed_model_path),
-        "breed_model_exists": breed_model_path.exists(),
-        "breed_model_loaded": breed_model is not None,
+        "animal_type_model_path": str(species_model_path),
+        "animal_type_model_exists": species_model_path.exists(),
+        "animal_type_model_loaded": species_model is not None,
     }
 
 

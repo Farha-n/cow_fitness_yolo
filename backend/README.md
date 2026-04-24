@@ -50,6 +50,35 @@ Model defaults used by backend scripts/API now point to:
 
 ---
 
+## Production Deployment For Shareable APKs
+
+If you want one APK to work across different devices and networks, the app must call a public backend URL over HTTPS.
+Local IP addresses like `http://192.168.x.x:8000` only work on the same Wi-Fi network.
+
+This repo now includes:
+
+- `backend/Dockerfile` for containerized FastAPI deployment
+- `render.yaml` for Render blueprint deploy
+
+### Deploy to Render
+
+1. Push this repository to GitHub.
+2. In Render, create a new Web Service from repo (or use Blueprint with `render.yaml`).
+3. Render will build from `backend/Dockerfile`.
+4. Wait until deployment succeeds and open `<your-service-url>/health`.
+5. Copy the public URL, for example `https://cow-fitness-api.onrender.com`.
+
+### Connect mobile app to production backend
+
+Set this in `frontend/cowFitnessApp/app.json`:
+
+- `expo.extra.backendUrlProduction`: your public HTTPS backend URL
+- `expo.extra.backendUrlDevelopment`: optional LAN URL for local testing
+
+Release APK builds use the production URL by default.
+
+---
+
 # 📂 Repository Structure  
 
 cow_yolo_repo/

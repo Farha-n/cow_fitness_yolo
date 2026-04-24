@@ -11,12 +11,3 @@ uvicorn
 python-multipart
 pillow
 
-ultralytics==8.3.40
-torch>=2.2.0
-opencv-python
-matplotlib
-numpy
-pandas
-pyyaml
-tqdm
-

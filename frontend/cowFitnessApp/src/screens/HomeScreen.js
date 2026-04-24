@@ -1,10 +1,20 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-export default function HomeScreen({ onGoCapture, onGoHistory }) {
+export default function HomeScreen({ onGoCapture, onGoHistory, backendHealth, historyCount }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Cow Fitness App</Text>
-      <Text style={styles.subtitle}>Detect cows from camera or gallery image</Text>
+      <Text style={styles.subtitle}>Detect cattle and buffalo from camera or gallery image</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Backend Status</Text>
+        <Text style={styles.cardText}>{backendHealth?.message || 'Not checked yet'}</Text>
+        <Text style={styles.cardMeta}>
+          State: {String(backendHealth?.status || 'unknown').toUpperCase()}
+          {backendHealth?.latencyMs ? ` • ${backendHealth.latencyMs} ms` : ''}
+        </Text>
+        <Text style={styles.cardMeta}>Saved runs: {historyCount || 0}</Text>
+      </View>
 
       <Pressable style={styles.primaryButton} onPress={onGoCapture}>
         <Text style={styles.primaryButtonText}>Open Capture</Text>
@@ -32,7 +42,30 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 15,
     textAlign: 'center',
-    marginBottom: 26,
+    marginBottom: 18,
+  },
+  card: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#d9e1ec',
+    backgroundColor: '#f8fbff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 18,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  cardText: {
+    fontSize: 14,
+    color: '#213547',
+    marginBottom: 4,
+  },
+  cardMeta: {
+    fontSize: 12,
+    color: '#5a6b7d',
   },
   primaryButton: {
     width: '100%',

@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   SafeAreaView,
@@ -17,38 +18,145 @@ const SCREEN_HOME = 'home';
 const SCREEN_CAPTURE = 'capture';
 const SCREEN_RESULTS = 'results';
 const SCREEN_HISTORY = 'history';
+const BACKEND_URL_STORAGE_KEY = 'cowFitnessApp.backendUrl';
+
+const sanitizeUrl = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().replace(/\/+$/, '');
+};
+
+const isEmulatorOnlyUrl = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized.startsWith('http://10.0.2.2') || normalized.startsWith('https://10.0.2.2');
+};
+
+const getConfiguredBackendUrl = () => {
+  const extra = Constants.expoConfig?.extra || {};
+  const productionUrl = sanitizeUrl(extra.backendUrlProduction || extra.EXPO_PUBLIC_BACKEND_URL_PROD);
+  const developmentUrl = sanitizeUrl(
+    extra.backendUrlDevelopment || extra.backendUrl || extra.EXPO_PUBLIC_BACKEND_URL,
+  );
+
+  if (__DEV__) {
+    return developmentUrl || productionUrl;
+  }
+
+  return productionUrl || developmentUrl;
+};
 
 const resolveDefaultBackendUrl = () => {
+  const configuredBackendUrl = getConfiguredBackendUrl();
+  if (configuredBackendUrl) {
+    return configuredBackendUrl;
+  }
+
   const hostUri =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoClient?.hostUri ||
     '';
 
   const host = typeof hostUri === 'string' ? hostUri.split(':')[0] : '';
-  return host ? `http://${host}:8010` : 'http://127.0.0.1:8010';
+  if (host) {
+    return `http://${host}:8000`;
+  }
+
+  if (Constants.platform?.android) {
+    return 'http://10.0.2.2:8000';
+  }
+
+  return 'http://127.0.0.1:8000';
 };
 
 export default function App() {
+  const configuredBackendUrl = getConfiguredBackendUrl();
+
   const [backendUrl, setBackendUrl] = useState(resolveDefaultBackendUrl());
+  const [backendUrlReady, setBackendUrlReady] = useState(false);
   const [imageUri, setImageUri] = useState('');
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [detections, setDetections] = useState([]);
   const [loading, setLoading] = useState(false);
   const [assessment, setAssessment] = useState(null);
-  const [species, setSpecies] = useState(null);
-  const [breed, setBreed] = useState(null);
+  const [animalType, setAnimalType] = useState(null);
   const [batchSummary, setBatchSummary] = useState(null);
+  const [detectionThreshold, setDetectionThreshold] = useState(0.55);
+  const [backendHealth, setBackendHealth] = useState({
+    status: 'unknown',
+    message: 'Not checked yet',
+    latencyMs: null,
+  });
   const [autoDetect, setAutoDetect] = useState(true);
   const [history, setHistory] = useState([]);
   const [activeScreen, setActiveScreen] = useState(SCREEN_HOME);
+
+  useEffect(() => {
+    const restoreBackendUrl = async () => {
+      try {
+        const storedBackendUrl = await AsyncStorage.getItem(BACKEND_URL_STORAGE_KEY);
+        if (storedBackendUrl && storedBackendUrl.trim()) {
+          let normalizedStoredBackendUrl = sanitizeUrl(storedBackendUrl);
+          if (configuredBackendUrl && isEmulatorOnlyUrl(normalizedStoredBackendUrl)) {
+            normalizedStoredBackendUrl = sanitizeUrl(configuredBackendUrl);
+          }
+          setBackendUrl(normalizedStoredBackendUrl);
+          await checkBackendHealth(normalizedStoredBackendUrl);
+        } else {
+          const defaultUrl = configuredBackendUrl || resolveDefaultBackendUrl();
+          await checkBackendHealth(defaultUrl);
+        }
+      } finally {
+        setBackendUrlReady(true);
+      }
+    };
+
+    restoreBackendUrl();
+  }, []);
+
+  useEffect(() => {
+    if (!backendUrlReady) {
+      return;
+    }
+
+    AsyncStorage.setItem(BACKEND_URL_STORAGE_KEY, sanitizeUrl(backendUrl)).catch(() => {});
+  }, [backendUrl, backendUrlReady]);
+
+  const checkBackendHealth = async (nextBackendUrl = backendUrl) => {
+    const normalizedUrl = sanitizeUrl(nextBackendUrl);
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      setBackendHealth({
+        status: 'offline',
+        message: 'Invalid backend URL',
+        latencyMs: null,
+      });
+      return;
+    }
+
+    const startedAt = Date.now();
+    setBackendHealth({ status: 'checking', message: 'Checking API...', latencyMs: null });
+    try {
+      const response = await fetch(`${normalizedUrl}/health`);
+      if (!response.ok) {
+        throw new Error(`Health check failed (${response.status})`);
+      }
+      const latencyMs = Date.now() - startedAt;
+      setBackendHealth({ status: 'online', message: 'API is reachable', latencyMs });
+    } catch (error) {
+      setBackendHealth({
+        status: 'offline',
+        message: error?.message || 'Could not reach API',
+        latencyMs: null,
+      });
+    }
+  };
 
   const setPickedAsset = async (asset) => {
     setImageUri(asset.uri);
     setImageSize({ width: asset.width || 1, height: asset.height || 1 });
     setDetections([]);
     setAssessment(null);
-    setSpecies(null);
-    setBreed(null);
+    setAnimalType(null);
     setBatchSummary(null);
     setActiveScreen(SCREEN_RESULTS);
 
@@ -99,14 +207,13 @@ export default function App() {
     setImageSize({ width: first.width || 1, height: first.height || 1 });
     setDetections([]);
     setAssessment(null);
-    setSpecies(null);
-    setBreed(null);
+    setAnimalType(null);
     setBatchSummary(null);
     setActiveScreen(SCREEN_RESULTS);
 
-    const normalizedUrl = backendUrl.trim().replace(/\/+$/, '');
+    const normalizedUrl = sanitizeUrl(backendUrl);
     if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
-      Alert.alert('Invalid URL', 'Use full URL like http://192.168.1.8:8010');
+      Alert.alert('Invalid URL', 'Use full URL like http://192.168.1.8:8000');
       return;
     }
 
@@ -139,19 +246,18 @@ export default function App() {
       if (firstResult) {
         setDetections(Array.isArray(firstResult.detections) ? firstResult.detections : []);
         setAssessment(firstResult.assessment || null);
-        setSpecies(firstResult.species || null);
-        setBreed(firstResult.breed || null);
+        setAnimalType(firstResult.animal_type || firstResult.species || null);
       }
 
-      const speciesCounts = {};
+      const animalTypeCounts = {};
       for (const item of results) {
-        const label = item?.species?.label || 'unknown';
-        speciesCounts[label] = (speciesCounts[label] || 0) + 1;
+        const label = item?.animal_type?.label || item?.species?.label || 'unknown';
+        animalTypeCounts[label] = (animalTypeCounts[label] || 0) + 1;
       }
 
       setBatchSummary({
         total: results.length,
-        speciesCounts,
+        animalTypeCounts,
       });
     } catch (error) {
       Alert.alert('Batch detection failed', error?.message || 'Could not call backend API.');
@@ -186,7 +292,7 @@ export default function App() {
       return;
     }
 
-    const normalizedUrl = backendUrl.trim().replace(/\/+$/, '');
+    const normalizedUrl = sanitizeUrl(backendUrl);
     if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
       Alert.alert('Invalid URL', 'Use full URL like http://192.168.1.100:8000');
       return;
@@ -214,12 +320,10 @@ export default function App() {
       const data = await response.json();
       const nextDetections = Array.isArray(data.detections) ? data.detections : [];
       const nextAssessment = data.assessment ?? null;
-      const nextSpecies = data.species ?? null;
-      const nextBreed = data.breed ?? null;
+      const nextAnimalType = data.animal_type ?? data.species ?? null;
       setDetections(nextDetections);
       setAssessment(nextAssessment);
-      setSpecies(nextSpecies);
-      setBreed(nextBreed);
+      setAnimalType(nextAnimalType);
       setBatchSummary(null);
       setHistory((previous) => [
         {
@@ -227,8 +331,7 @@ export default function App() {
           imageUri: targetUri,
           count: nextDetections.length,
           assessment: nextAssessment,
-          species: nextSpecies,
-          breed: nextBreed,
+          animalType: nextAnimalType,
           timestamp: new Date().toLocaleString(),
         },
         ...previous,
@@ -245,8 +348,7 @@ export default function App() {
     setImageUri(item.imageUri);
     setDetections([]);
     setAssessment(item.assessment || null);
-    setSpecies(item.species || null);
-    setBreed(item.breed || null);
+    setAnimalType(item.animalType || null);
     setBatchSummary(null);
     setImageSize({ width: 1, height: 1 });
     setActiveScreen(SCREEN_RESULTS);
@@ -258,6 +360,8 @@ export default function App() {
         <HomeScreen
           onGoCapture={() => setActiveScreen(SCREEN_CAPTURE)}
           onGoHistory={() => setActiveScreen(SCREEN_HISTORY)}
+          backendHealth={backendHealth}
+          historyCount={history.length}
         />
       );
     }
@@ -268,8 +372,10 @@ export default function App() {
           backendUrl={backendUrl}
           autoDetect={autoDetect}
           loading={loading}
+          backendHealth={backendHealth}
           onChangeBackendUrl={setBackendUrl}
           onChangeAutoDetect={setAutoDetect}
+          onCheckBackend={() => checkBackendHealth()}
           onPickImage={pickImage}
           onPickMultipleImages={pickMultipleImages}
           onCaptureImage={captureImage}
@@ -287,9 +393,10 @@ export default function App() {
           imageUri={imageUri}
           imageSize={imageSize}
           detections={detections}
+          detectionThreshold={detectionThreshold}
+          onChangeDetectionThreshold={setDetectionThreshold}
           assessment={assessment}
-          species={species}
-          breed={breed}
+          animalType={animalType}
           batchSummary={batchSummary}
           loading={loading}
           onDetect={() => runDetection()}
@@ -306,6 +413,7 @@ export default function App() {
         onOpenItem={openHistoryItem}
         onGoHome={() => setActiveScreen(SCREEN_HOME)}
         onGoCapture={() => setActiveScreen(SCREEN_CAPTURE)}
+        onClearHistory={() => setHistory([])}
       />
     );
   };

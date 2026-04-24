@@ -4,8 +4,10 @@ export default function CaptureScreen({
   backendUrl,
   autoDetect,
   loading,
+  backendHealth,
   onChangeBackendUrl,
   onChangeAutoDetect,
+  onCheckBackend,
   onPickImage,
   onPickMultipleImages,
   onCaptureImage,
@@ -26,6 +28,18 @@ export default function CaptureScreen({
         autoCorrect={false}
         style={styles.input}
       />
+
+      <View style={styles.statusCard}>
+        <Text style={styles.statusTitle}>API Health</Text>
+        <Text style={styles.statusText}>{backendHealth?.message || 'Not checked yet'}</Text>
+        <Text style={styles.statusMeta}>
+          State: {String(backendHealth?.status || 'unknown').toUpperCase()}
+          {backendHealth?.latencyMs ? ` • ${backendHealth.latencyMs} ms` : ''}
+        </Text>
+        <Pressable style={styles.statusButton} onPress={onCheckBackend}>
+          <Text style={styles.statusButtonText}>Check Backend</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.toggleRow}>
         <Text style={styles.toggleText}>Auto-detect after pick/capture</Text>
@@ -82,6 +96,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     marginBottom: 12,
+  },
+  statusCard: {
+    borderWidth: 1,
+    borderColor: '#d9e1ec',
+    backgroundColor: '#f8fbff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  statusTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  statusText: {
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  statusMeta: {
+    fontSize: 12,
+    color: '#607080',
+    marginBottom: 10,
+  },
+  statusButton: {
+    backgroundColor: '#eef4ff',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  statusButtonText: {
+    color: '#1f6feb',
+    fontWeight: '600',
   },
   toggleRow: {
     flexDirection: 'row',
