@@ -1,6 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
@@ -18,18 +17,12 @@ const SCREEN_HOME = 'home';
 const SCREEN_CAPTURE = 'capture';
 const SCREEN_RESULTS = 'results';
 const SCREEN_HISTORY = 'history';
-const BACKEND_URL_STORAGE_KEY = 'cowFitnessApp.backendUrl';
 
 const sanitizeUrl = (value) => {
   if (typeof value !== 'string') {
     return '';
   }
   return value.trim().replace(/\/+$/, '');
-};
-
-const isEmulatorOnlyUrl = (value) => {
-  const normalized = String(value || '').trim().toLowerCase();
-  return normalized.startsWith('http://10.0.2.2') || normalized.startsWith('https://10.0.2.2');
 };
 
 const getConfiguredBackendUrl = () => {
@@ -73,7 +66,6 @@ export default function App() {
   const configuredBackendUrl = getConfiguredBackendUrl();
 
   const [backendUrl, setBackendUrl] = useState(resolveDefaultBackendUrl());
-  const [backendUrlReady, setBackendUrlReady] = useState(false);
   const [imageUri, setImageUri] = useState('');
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [detections, setDetections] = useState([]);
@@ -92,35 +84,11 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState(SCREEN_HOME);
 
   useEffect(() => {
-    const restoreBackendUrl = async () => {
-      try {
-        const storedBackendUrl = await AsyncStorage.getItem(BACKEND_URL_STORAGE_KEY);
-        if (storedBackendUrl && storedBackendUrl.trim()) {
-          let normalizedStoredBackendUrl = sanitizeUrl(storedBackendUrl);
-          if (configuredBackendUrl && isEmulatorOnlyUrl(normalizedStoredBackendUrl)) {
-            normalizedStoredBackendUrl = sanitizeUrl(configuredBackendUrl);
-          }
-          setBackendUrl(normalizedStoredBackendUrl);
-          await checkBackendHealth(normalizedStoredBackendUrl);
-        } else {
-          const defaultUrl = configuredBackendUrl || resolveDefaultBackendUrl();
-          await checkBackendHealth(defaultUrl);
-        }
-      } finally {
-        setBackendUrlReady(true);
-      }
-    };
-
-    restoreBackendUrl();
+    const initialBackendUrl = configuredBackendUrl || resolveDefaultBackendUrl();
+    const normalizedBackendUrl = sanitizeUrl(initialBackendUrl);
+    setBackendUrl(normalizedBackendUrl);
+    checkBackendHealth(normalizedBackendUrl);
   }, []);
-
-  useEffect(() => {
-    if (!backendUrlReady) {
-      return;
-    }
-
-    AsyncStorage.setItem(BACKEND_URL_STORAGE_KEY, sanitizeUrl(backendUrl)).catch(() => {});
-  }, [backendUrl, backendUrlReady]);
 
   const checkBackendHealth = async (nextBackendUrl = backendUrl) => {
     const normalizedUrl = sanitizeUrl(nextBackendUrl);
