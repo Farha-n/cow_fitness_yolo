@@ -56,7 +56,7 @@ SPECIES_MODEL_PATH = resolve_model_path(
     MODELS_DIR / "cattle_species_cls.pt",
 )
 DETECTOR_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTOR_CONFIDENCE_THRESHOLD", "0.55"))
-DETECTOR_IMAGE_SIZE = int(os.getenv("DETECTOR_IMAGE_SIZE", "320" if IS_RENDER else "640"))
+DETECTOR_IMAGE_SIZE = int(os.getenv("DETECTOR_IMAGE_SIZE", "256" if IS_RENDER else "640"))
 ENABLE_FITNESS_MODEL = os.getenv("ENABLE_FITNESS_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 ENABLE_SPECIES_MODEL = os.getenv("ENABLE_SPECIES_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 app = FastAPI(title="Animal Type and Fitness API")
@@ -389,6 +389,16 @@ def home() -> dict:
         "status": "ok",
         "message": "Animal Type and Fitness API is running",
         "docs": "/docs",
+    }
+
+
+@app.post("/warmup")
+def warmup() -> dict:
+    detector_model = get_detector_model()
+    return {
+        "status": "ok",
+        "detector_model": str(MODEL_PATH),
+        "detector_ready": detector_model is not None,
     }
 
 

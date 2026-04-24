@@ -17,12 +17,26 @@ const SCREEN_HOME = 'home';
 const SCREEN_CAPTURE = 'capture';
 const SCREEN_RESULTS = 'results';
 const SCREEN_HISTORY = 'history';
+const IMAGE_PICKER_QUALITY = 0.5;
+const HEALTH_TIMEOUT_MS = 15000;
+const WARMUP_TIMEOUT_MS = 30000;
+const PREDICT_TIMEOUT_MS = 90000;
 
 const sanitizeUrl = (value) => {
   if (typeof value !== 'string') {
     return '';
   }
   return value.trim().replace(/\/+$/, '');
+};
+
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 30000) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 const getConfiguredBackendUrl = () => {
@@ -82,6 +96,7 @@ export default function App() {
   const [autoDetect, setAutoDetect] = useState(true);
   const [history, setHistory] = useState([]);
   const [activeScreen, setActiveScreen] = useState(SCREEN_HOME);
+  const [backendWarmedUp, setBackendWarmedUp] = useState(false);
 
   useEffect(() => {
     const initialBackendUrl = configuredBackendUrl || resolveDefaultBackendUrl();
@@ -89,6 +104,37 @@ export default function App() {
     setBackendUrl(normalizedBackendUrl);
     checkBackendHealth(normalizedBackendUrl);
   }, []);
+
+  useEffect(() => {
+    setBackendWarmedUp(false);
+  }, [backendUrl]);
+
+  const warmupBackend = async (nextBackendUrl = backendUrl) => {
+    if (backendWarmedUp) {
+      return true;
+    }
+
+    const normalizedUrl = sanitizeUrl(nextBackendUrl);
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      return false;
+    }
+
+    try {
+      const response = await fetchWithTimeout(
+        `${normalizedUrl}/warmup`,
+        { method: 'POST' },
+        WARMUP_TIMEOUT_MS,
+      );
+      if (response.ok) {
+        setBackendWarmedUp(true);
+        return true;
+      }
+    } catch (error) {
+      // Ignore warmup failure and let predict handle final error path.
+    }
+
+    return false;
+  };
 
   const checkBackendHealth = async (nextBackendUrl = backendUrl) => {
     const normalizedUrl = sanitizeUrl(nextBackendUrl);
@@ -104,12 +150,17 @@ export default function App() {
     const startedAt = Date.now();
     setBackendHealth({ status: 'checking', message: 'Checking API...', latencyMs: null });
     try {
-      const response = await fetch(`${normalizedUrl}/health`);
+      const response = await fetchWithTimeout(
+        `${normalizedUrl}/health`,
+        { method: 'GET' },
+        HEALTH_TIMEOUT_MS,
+      );
       if (!response.ok) {
         throw new Error(`Health check failed (${response.status})`);
       }
       const latencyMs = Date.now() - startedAt;
       setBackendHealth({ status: 'online', message: 'API is reachable', latencyMs });
+      warmupBackend(normalizedUrl);
     } catch (error) {
       setBackendHealth({
         status: 'offline',
@@ -142,7 +193,7 @@ export default function App() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 1,
+      quality: IMAGE_PICKER_QUALITY,
     });
 
     if (result.canceled || !result.assets?.length) {
@@ -163,7 +214,7 @@ export default function App() {
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: 10,
-      quality: 1,
+      quality: IMAGE_PICKER_QUALITY,
     });
 
     if (result.canceled || !result.assets?.length) {
@@ -187,6 +238,8 @@ export default function App() {
 
     setLoading(true);
     try {
+      await warmupBackend(normalizedUrl);
+
       const formData = new FormData();
       for (let i = 0; i < result.assets.length; i += 1) {
         const asset = result.assets[i];
@@ -197,10 +250,14 @@ export default function App() {
         });
       }
 
-      const response = await fetch(`${normalizedUrl}/predict-batch`, {
-        method: 'POST',
-        body: formData,
-      });
+      const response = await fetchWithTimeout(
+        `${normalizedUrl}/predict-batch`,
+        {
+          method: 'POST',
+          body: formData,
+        },
+        PREDICT_TIMEOUT_MS,
+      );
 
       if (!response.ok) {
         const text = await response.text();
@@ -243,7 +300,7 @@ export default function App() {
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
-      quality: 1,
+      quality: IMAGE_PICKER_QUALITY,
     });
 
     if (result.canceled || !result.assets?.length) {
@@ -268,6 +325,8 @@ export default function App() {
 
     setLoading(true);
     try {
+      await warmupBackend(normalizedUrl);
+
       const formData = new FormData();
       formData.append('file', {
         uri: targetUri,
@@ -275,10 +334,14 @@ export default function App() {
         type: 'image/jpeg',
       });
 
-      const response = await fetch(`${normalizedUrl}/predict`, {
-        method: 'POST',
-        body: formData,
-      });
+      const response = await fetchWithTimeout(
+        `${normalizedUrl}/predict`,
+        {
+          method: 'POST',
+          body: formData,
+        },
+        PREDICT_TIMEOUT_MS,
+      );
 
       if (!response.ok) {
         const text = await response.text();
