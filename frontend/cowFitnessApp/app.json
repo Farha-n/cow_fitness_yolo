@@ -27,7 +27,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "backendUrlProduction": "https://your-public-backend-url.onrender.com",
+      "backendUrlProduction": "https://cow-fitness-yolo-724k.onrender.com",
       "backendUrlDevelopment": "http://192.168.1.14:8000",
       "eas": {
         "projectId": "d260c112-f9a8-427c-b2cc-685019175fd5"
