@@ -231,6 +231,7 @@ def build_species_result(image: Image.Image, detections: list[dict]) -> dict:
     aliases = {
         "cow": "cow",
         "cattle": "cow",
+        "animal": "cow",
         "buffalo": "buffalo",
         "buff": "buffalo",
         "other": "other",
@@ -327,8 +328,6 @@ def process_image(image: Image.Image) -> dict:
             class_id = int(cls_ids[index]) if index < len(cls_ids) else -1
             confidence = float(conf[index]) if index < len(conf) else 0.0
             class_name = names.get(class_id, str(class_id))
-            if species_model is None and str(class_name).strip().lower() in {"cow", "cattle", "buffalo"}:
-                class_name = "animal"
             detections.append(
                 {
                     "class_id": class_id,
@@ -395,17 +394,19 @@ def home() -> dict:
 
 @app.get("/model-status")
 def model_status() -> dict:
+    fitness_model_instance = get_fitness_model()
+    species_model_instance = get_species_model()
     return {
         "detector_model": str(MODEL_PATH),
         "detector_model_loaded": get_detector_model.cache_info().currsize > 0,
         "fitness_model_path": str(fitness_model_path),
         "fitness_model_exists": fitness_model_path.exists(),
         "fitness_model_enabled": ENABLE_FITNESS_MODEL,
-        "fitness_model_loaded": get_fitness_model.cache_info().currsize > 0,
+        "fitness_model_loaded": fitness_model_instance is not None,
         "animal_type_model_path": str(species_model_path),
         "animal_type_model_exists": species_model_path.exists(),
         "animal_type_model_enabled": ENABLE_SPECIES_MODEL,
-        "animal_type_model_loaded": get_species_model.cache_info().currsize > 0,
+        "animal_type_model_loaded": species_model_instance is not None,
         "detector_image_size": DETECTOR_IMAGE_SIZE,
         "lightweight_detector_mode": USE_LIGHTWEIGHT_DETECTOR,
     }
