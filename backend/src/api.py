@@ -291,6 +291,7 @@ def process_image(image: Image.Image) -> dict:
     image_width, image_height = image.size
 
     detector_model = get_detector_model()
+    species_model = get_species_model()
     results = detector_model(image, imgsz=DETECTOR_IMAGE_SIZE, conf=DETECTOR_CONFIDENCE_THRESHOLD)
     if not results:
         detections = []
@@ -396,12 +397,17 @@ def home() -> dict:
 def model_status() -> dict:
     return {
         "detector_model": str(MODEL_PATH),
+        "detector_model_loaded": get_detector_model.cache_info().currsize > 0,
         "fitness_model_path": str(fitness_model_path),
         "fitness_model_exists": fitness_model_path.exists(),
-        "fitness_model_loaded": fitness_model is not None,
+        "fitness_model_enabled": ENABLE_FITNESS_MODEL,
+        "fitness_model_loaded": get_fitness_model.cache_info().currsize > 0,
         "animal_type_model_path": str(species_model_path),
         "animal_type_model_exists": species_model_path.exists(),
-        "animal_type_model_loaded": species_model is not None,
+        "animal_type_model_enabled": ENABLE_SPECIES_MODEL,
+        "animal_type_model_loaded": get_species_model.cache_info().currsize > 0,
+        "detector_image_size": DETECTOR_IMAGE_SIZE,
+        "lightweight_detector_mode": USE_LIGHTWEIGHT_DETECTOR,
     }
 
 
