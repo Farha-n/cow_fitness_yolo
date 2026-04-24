@@ -10,6 +10,11 @@ from ultralytics import YOLO
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 MODELS_DIR = ROOT_DIR / "models"
+IS_RENDER = bool(os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL"))
+USE_LIGHTWEIGHT_DETECTOR = os.getenv(
+    "USE_LIGHTWEIGHT_DETECTOR",
+    "true" if IS_RENDER else "false",
+).strip().lower() in {"1", "true", "yes"}
 
 
 def resolve_model_path(env_var: str, *fallbacks: Path) -> Path:
@@ -26,11 +31,20 @@ def resolve_model_path(env_var: str, *fallbacks: Path) -> Path:
     return fallbacks[0]
 
 
-MODEL_PATH = resolve_model_path(
-    "DETECTOR_MODEL_PATH",
-    MODELS_DIR / "trained" / "cow_yolos_best.pt",
-    MODELS_DIR / "cow_yolos_best.pt",
-)
+if USE_LIGHTWEIGHT_DETECTOR:
+    detector_fallbacks = (
+        MODELS_DIR / "yolo11n.pt",
+        MODELS_DIR / "trained" / "cow_yolos_best.pt",
+        MODELS_DIR / "cow_yolos_best.pt",
+    )
+else:
+    detector_fallbacks = (
+        MODELS_DIR / "trained" / "cow_yolos_best.pt",
+        MODELS_DIR / "cow_yolos_best.pt",
+        MODELS_DIR / "yolo11n.pt",
+    )
+
+MODEL_PATH = resolve_model_path("DETECTOR_MODEL_PATH", *detector_fallbacks)
 FITNESS_MODEL_PATH = resolve_model_path(
     "FITNESS_MODEL_PATH",
     MODELS_DIR / "trained" / "cow_fitness_cls.pt",
@@ -42,6 +56,7 @@ SPECIES_MODEL_PATH = resolve_model_path(
     MODELS_DIR / "cattle_species_cls.pt",
 )
 DETECTOR_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTOR_CONFIDENCE_THRESHOLD", "0.55"))
+DETECTOR_IMAGE_SIZE = int(os.getenv("DETECTOR_IMAGE_SIZE", "320" if IS_RENDER else "640"))
 ENABLE_FITNESS_MODEL = os.getenv("ENABLE_FITNESS_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 ENABLE_SPECIES_MODEL = os.getenv("ENABLE_SPECIES_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 app = FastAPI(title="Animal Type and Fitness API")
@@ -276,7 +291,7 @@ def process_image(image: Image.Image) -> dict:
     image_width, image_height = image.size
 
     detector_model = get_detector_model()
-    results = detector_model(image, imgsz=640, conf=DETECTOR_CONFIDENCE_THRESHOLD)
+    results = detector_model(image, imgsz=DETECTOR_IMAGE_SIZE, conf=DETECTOR_CONFIDENCE_THRESHOLD)
     if not results:
         detections = []
         animal_type = force_unknown_species(build_species_result(image, detections))
