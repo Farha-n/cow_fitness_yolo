@@ -17,7 +17,7 @@ const SCREEN_HOME = 'home';
 const SCREEN_CAPTURE = 'capture';
 const SCREEN_RESULTS = 'results';
 const SCREEN_HISTORY = 'history';
-const IMAGE_PICKER_QUALITY = 0.5;
+const IMAGE_PICKER_QUALITY = 0.35;
 const HEALTH_TIMEOUT_MS = 15000;
 const WARMUP_TIMEOUT_MS = 30000;
 const PREDICT_TIMEOUT_MS = 90000;
@@ -96,8 +96,6 @@ export default function App() {
   const [autoDetect, setAutoDetect] = useState(true);
   const [history, setHistory] = useState([]);
   const [activeScreen, setActiveScreen] = useState(SCREEN_HOME);
-  const [backendWarmedUp, setBackendWarmedUp] = useState(false);
-
   useEffect(() => {
     const initialBackendUrl = configuredBackendUrl || resolveDefaultBackendUrl();
     const normalizedBackendUrl = sanitizeUrl(initialBackendUrl);
@@ -105,15 +103,7 @@ export default function App() {
     checkBackendHealth(normalizedBackendUrl);
   }, []);
 
-  useEffect(() => {
-    setBackendWarmedUp(false);
-  }, [backendUrl]);
-
   const warmupBackend = async (nextBackendUrl = backendUrl) => {
-    if (backendWarmedUp) {
-      return true;
-    }
-
     const normalizedUrl = sanitizeUrl(nextBackendUrl);
     if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
       return false;
@@ -126,7 +116,6 @@ export default function App() {
         WARMUP_TIMEOUT_MS,
       );
       if (response.ok) {
-        setBackendWarmedUp(true);
         return true;
       }
     } catch (error) {
@@ -238,8 +227,6 @@ export default function App() {
 
     setLoading(true);
     try {
-      await warmupBackend(normalizedUrl);
-
       const formData = new FormData();
       for (let i = 0; i < result.assets.length; i += 1) {
         const asset = result.assets[i];
@@ -325,8 +312,6 @@ export default function App() {
 
     setLoading(true);
     try {
-      await warmupBackend(normalizedUrl);
-
       const formData = new FormData();
       formData.append('file', {
         uri: targetUri,

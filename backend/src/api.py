@@ -56,7 +56,8 @@ SPECIES_MODEL_PATH = resolve_model_path(
     MODELS_DIR / "cattle_species_cls.pt",
 )
 DETECTOR_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTOR_CONFIDENCE_THRESHOLD", "0.55"))
-DETECTOR_IMAGE_SIZE = int(os.getenv("DETECTOR_IMAGE_SIZE", "256" if IS_RENDER else "640"))
+DETECTOR_IMAGE_SIZE = int(os.getenv("DETECTOR_IMAGE_SIZE", "160" if IS_RENDER else "640"))
+DETECTOR_MAX_DETECTIONS = int(os.getenv("DETECTOR_MAX_DETECTIONS", "1" if IS_RENDER else "10"))
 ENABLE_FITNESS_MODEL = os.getenv("ENABLE_FITNESS_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 ENABLE_SPECIES_MODEL = os.getenv("ENABLE_SPECIES_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 app = FastAPI(title="Animal Type and Fitness API")
@@ -293,7 +294,12 @@ def process_image(image: Image.Image) -> dict:
 
     detector_model = get_detector_model()
     species_model = get_species_model()
-    results = detector_model(image, imgsz=DETECTOR_IMAGE_SIZE, conf=DETECTOR_CONFIDENCE_THRESHOLD)
+    results = detector_model(
+        image,
+        imgsz=DETECTOR_IMAGE_SIZE,
+        conf=DETECTOR_CONFIDENCE_THRESHOLD,
+        max_det=DETECTOR_MAX_DETECTIONS,
+    )
     if not results:
         detections = []
         animal_type = force_unknown_species(build_species_result(image, detections))
@@ -418,6 +424,7 @@ def model_status() -> dict:
         "animal_type_model_enabled": ENABLE_SPECIES_MODEL,
         "animal_type_model_loaded": species_model_instance is not None,
         "detector_image_size": DETECTOR_IMAGE_SIZE,
+        "detector_max_detections": DETECTOR_MAX_DETECTIONS,
         "lightweight_detector_mode": USE_LIGHTWEIGHT_DETECTOR,
     }
 
