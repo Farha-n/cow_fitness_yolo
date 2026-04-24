@@ -339,6 +339,15 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/")
+def home() -> dict:
+    return {
+        "status": "ok",
+        "message": "Animal Type and Fitness API is running",
+        "docs": "/docs",
+    }
+
+
 @app.get("/model-status")
 def model_status() -> dict:
     return {
