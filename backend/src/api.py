@@ -1,5 +1,6 @@
 import os
 from io import BytesIO
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -41,22 +42,37 @@ SPECIES_MODEL_PATH = resolve_model_path(
     MODELS_DIR / "cattle_species_cls.pt",
 )
 DETECTOR_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTOR_CONFIDENCE_THRESHOLD", "0.55"))
+ENABLE_FITNESS_MODEL = os.getenv("ENABLE_FITNESS_MODEL", "false").strip().lower() in {"1", "true", "yes"}
+ENABLE_SPECIES_MODEL = os.getenv("ENABLE_SPECIES_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 app = FastAPI(title="Animal Type and Fitness API")
 
 if not MODEL_PATH.exists():
     raise RuntimeError(f"Detector model not found at: {MODEL_PATH}")
 
-model = YOLO(str(MODEL_PATH))
 
-fitness_model = None
+@lru_cache(maxsize=1)
+def get_detector_model() -> YOLO:
+    return YOLO(str(MODEL_PATH))
+
+
 fitness_model_path = FITNESS_MODEL_PATH
-if fitness_model_path.exists():
-    fitness_model = YOLO(str(fitness_model_path))
 
-species_model = None
+
+@lru_cache(maxsize=1)
+def get_fitness_model() -> YOLO | None:
+    if not ENABLE_FITNESS_MODEL or not fitness_model_path.exists():
+        return None
+    return YOLO(str(fitness_model_path))
+
+
 species_model_path = SPECIES_MODEL_PATH
-if species_model_path.exists():
-    species_model = YOLO(str(species_model_path))
+
+
+@lru_cache(maxsize=1)
+def get_species_model() -> YOLO | None:
+    if not ENABLE_SPECIES_MODEL or not species_model_path.exists():
+        return None
+    return YOLO(str(species_model_path))
 
 def build_assessment(detections: list, image_width: int, image_height: int) -> dict:
     if not detections:
@@ -117,6 +133,7 @@ def build_assessment(detections: list, image_width: int, image_height: int) -> d
 
 
 def build_classifier_assessment(image: Image.Image) -> dict | None:
+    fitness_model = get_fitness_model()
     if fitness_model is None:
         return None
 
@@ -204,8 +221,19 @@ def build_species_result(image: Image.Image, detections: list[dict]) -> dict:
         "other": "other",
         "unknown": "other",
     }
+    species_model = get_species_model()
     classified = classify_top_label(species_model, image, aliases)
     if classified is None:
+        for detection in detections:
+            raw_label = str(detection.get("class_name") or "").strip().lower()
+            mapped_label = aliases.get(raw_label)
+            if mapped_label in {"cow", "buffalo"}:
+                return {
+                    "label": mapped_label,
+                    "confidence": float(detection.get("confidence", 0.0)),
+                    "source": "detector_fallback",
+                }
+
         return {
             "label": "unknown",
             "confidence": 0.0,
@@ -247,7 +275,8 @@ def build_non_cow_assessment() -> dict:
 def process_image(image: Image.Image) -> dict:
     image_width, image_height = image.size
 
-    results = model(image, imgsz=640, conf=DETECTOR_CONFIDENCE_THRESHOLD)
+    detector_model = get_detector_model()
+    results = detector_model(image, imgsz=640, conf=DETECTOR_CONFIDENCE_THRESHOLD)
     if not results:
         detections = []
         animal_type = force_unknown_species(build_species_result(image, detections))
